@@ -27,7 +27,15 @@ INTEL = 15
 REMAIN = 16
 NOTE = 17
 ALL_STATS = [FORCE, RESIS, TIR, AGILITE, MAGIE, CHARISME, INTEL]
-
+STAT_NAME = {
+     9:"Force     ",
+    10:"Résistance",
+    11:"Tir       ",
+    12:"Agilité   ",
+    13:"Magie     ",
+    14:"Charisme  ",
+    15:"Intellig. "
+}
 
 logging.basicConfig(level=logging.INFO)
 client = discord.Client()
@@ -87,20 +95,15 @@ async def stats(message=None, member=None, args=None, force=False):
         em.add_field(
             inline=False,
             name="Statistiques",
-            value="""```
-Force     : {}
-Résistance: {}
-Tir       : {}
-Agilité   : {}
-Magie     : {}
-Charisme  : {}
-Intellig. : {}
-```""".format( *[
-                stat[x] +
-                " " * (3 - len(stat[x])) +
-                "▬" * (int(stat[x]) // 5)
-                for x in ALL_STATS
-                ]
+            value="""```diff\n{}```""".format(
+                "\n".join([
+                    ("+" if int(stat[x]) >= 60 else ("-" if int(stat[x]) < 25 else " ")) +
+                    STAT_NAME[x] + " :" + 
+                    stat[x] +
+                    " " * (3 - len(stat[x])) +
+                    "▬" * (int(stat[x]) // 5)
+                    for x in ALL_STATS
+                ])
         ))
         em.set_image(url=stat[IMAGE_URL])
         em.set_author(name=member.name, url=member.avatar_url)
