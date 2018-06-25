@@ -18,13 +18,16 @@ GOLD = 6
 MAIN_CLASSE = 7
 SECOND_CLASSE = 8
 FORCE = 9
-RESISTANCE = 10
+RESIS = 10
 TIR = 11
 AGILITE = 12
 MAGIE = 13
 CHARISME = 14
-INTELLIGENCE = 15
+INTEL = 15
 REMAIN = 16
+NOTE = 17
+ALL_STATS = [FORCE, RESIS, TIR, AGILITE, MAGIE, CHARISME, INTEL]
+
 
 logging.basicConfig(level=logging.INFO)
 client = discord.Client()
@@ -66,20 +69,39 @@ def getstat(id):
 async def stats(message=None, member=None, args=None, force=False):
     if not args : args = ["show"]
     if args[0] == "show":
-        stat = getstat(message.guild.get_member(args[1]) if len(args) >= 2 else member.id)
-        em = discord.Embed(title="Fiche de personnage",
-              description="Niveau {} ({})\nClasse : **{}**/{}".format(
-                  stat[LEVEL],stat[XP],stat[MAIN_CLASSE],stat[SECOND_CLASSE]) +
-"""```
-Force       : {}
-Résistance  : {}
-Tir         : {}
-Agilité     : {}
-Magie       : {}
-Charisme    : {}
-Intelligence: {}
-```""".format(stat[FORCE],stat[RESISTANCE],stat[TIR],stat[AGILITE],
-           stat[MAGIE],stat[CHARISME],stat[INTELLIGENCE]))
+        if len(args) >= 2:
+            member = message.guild.get_member_named(args[1])
+            if not member:
+                await message.channel.send("Membre non trouvé")
+                return False
+        stat = getstat(member.id)
+        em = discord.Embed(title="Fiche de personnage", colour=member.colour)
+        em.add_field(
+            name="Personnage",
+            value="Niveau **{}**\nExpérience : {}\nClasse : **{}**\n{}{}".format(
+                stat[LEVEL],stat[XP],stat[MAIN_CLASSE],' '*15,stat[SECOND_CLASSE]))
+        em.add_field(
+            name="Description",
+            value=stat[NOTE]
+        )
+        em.add_field(
+            inline=False,
+            name="Statistiques",
+            value="""```
+Force     : {}
+Résistance: {}
+Tir       : {}
+Agilité   : {}
+Magie     : {}
+Charisme  : {}
+Intellig. : {}
+```""".format( *[
+                stat[x] +
+                " " * (3 - len(stat[x])) +
+                "▬" * (int(stat[x]) // 5)
+                for x in ALL_STATS
+                ]
+        ))
         em.set_image(url=stat[IMAGE_URL])
         em.set_author(name=member.name, url=member.avatar_url)
         await message.channel.send(embed=em)
