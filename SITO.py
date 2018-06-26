@@ -28,6 +28,8 @@ REMAIN = 16
 NOTE = 17
 ALL_STATS = [FORCE, RESIS, TIR, AGILITE, MAGIE, CHARISME, INTEL]
 STAT_NAME = {
+     5:"Expérience",
+     6:"Crédit",
      9:"Force     ",
     10:"Résistance",
     11:"Tir       ",
@@ -67,13 +69,57 @@ async def on_message(m):
 
 async def command(message, member, cmd, args, force):
     if cmd == "stats" : await stats(message=message, member=member, args=args)
-    
+    elif cmd == "exp" : await parse_ressource(XP, message=message, args=args, member=member)
+    elif cmd == "credit": await parse_ressource(GOLD, message=message, args=args, member=member)
+
 def getstat(id):
     for line in wb.get_all_values():
         if line[ID_DISCORD] == str(id):
             return line
     return None
-            
+
+def get_dbb_stats_line(id):
+    sh = wb.get_all_values()
+    for line in range(len(sh)):
+        if sh[line][ID_DISCORD] == str(id):
+            return line
+    return None
+
+async def parse_ressource(ressource, message=None, member=None, args=None):
+    if not args:
+        stat = getstat(member.id)
+        await message.channel.send("Vous avez {} {}".format(stat[ressource] ,STAT_NAME[ressource]))
+    if len(args) == 1:
+        await message.channel.send("comming soon (j'ai la flemme de coder)")
+    if len(args) == 2:
+        await add_ressource(ressource, message=message, member=member, args=args)
+        
+async def add_ressource(ressource, message=None, member=None, args=None):
+    nb = int(args[-1])
+    member = message.guild.get_member_named(" ".join(args[:-1]))
+    if not member:
+        await message.channel.send("Membre non trouvé")
+        return None
+    stat = getstat(member.id)
+    new_nb = int(stat[ressource]) + nb
+    msg = "{} a {} {} {}, il en possède désormais {}".format(
+                                member.mention,
+                                "gagné" if nb > 0 else "perdu",
+                                abs(nb),
+                                STAT_NAME[ressource].replace(' ',''),
+                                new_nb
+    )
+    await message.channel.send(msg)
+    wb.update_cell(get_dbb_stats_line(member.id) + 1, ressource + 1, str(new_nb))
+    if ressource == XP:
+        level = get_level(new_nb)[0]
+        if level > int(stat[LEVEL]):
+            await message.channel.send(member.mention + " a level up au niveau " + str(level) +" !!")
+        if level != int(stat[LEVEL]):
+            wb.update_cell(get_dbb_stats_line(member.id) + 1, LEVEL + 1, str(level))
+            wb.update_cell(get_dbb_stats_line(member.id) + 1, REMAIN + 1,
+                           str(int(stat[REMAIN]) + level - int(stat[LEVEL])))
+    
 async def stats(message=None, member=None, args=None, force=False):
     if not args : args = ["show"]
     if args[0] == "show":
@@ -86,8 +132,10 @@ async def stats(message=None, member=None, args=None, force=False):
         em = discord.Embed(title="Fiche de personnage", colour=member.colour)
         em.add_field(
             name="Personnage",
-            value="Niveau **{}**\nExpérience : {}\nClasse : **{}**\n{}{}".format(
-                stat[LEVEL],stat[XP],stat[MAIN_CLASSE],' '*15,stat[SECOND_CLASSE]))
+            value="Niveau **{}**\nExpérience : {}/{}\nCrédit : {}\nClasse : **{}**\n{}{}".format(
+                stat[LEVEL], stat[XP], get_level(stat[XP])[1], stat[GOLD],
+                stat[MAIN_CLASSE], ' '*15, stat[SECOND_CLASSE])
+            )
         em.add_field(
             name="Description",
             value=stat[NOTE]
@@ -97,17 +145,27 @@ async def stats(message=None, member=None, args=None, force=False):
             name="Statistiques",
             value="""```diff\n{}```""".format(
                 "\n".join([
-                    ("+" if int(stat[x]) >= 60 else ("-" if int(stat[x]) < 25 else " ")) +
+                    ("+" if int(stat[x]) >= 60 else ("-" if int(stat[x]) < 25 else ">")) +
                     STAT_NAME[x] + " :" + 
                     stat[x] +
                     " " * (3 - len(stat[x])) +
                     "▬" * (int(stat[x]) // 5)
                     for x in ALL_STATS
-                ])
-        ))
+                ])) +
+                ("Points restant : {}".format(stat[REMAIN]) if int(stat[REMAIN]) else "")
+        )
         em.set_image(url=stat[IMAGE_URL])
         em.set_author(name=member.name, url=member.avatar_url)
         await message.channel.send(embed=em)
 
 
+def get_level(xp):
+    xp = int(xp)
+    xpNeeded = 100
+    level = 0
+    while xp >= xpNeeded:
+        level += 1
+        xpNeeded += 100 + 10 * level
+    return (level, xpNeeded)
+        
 with open("private/token") as fd: client.run(fd.read())
