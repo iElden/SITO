@@ -90,7 +90,15 @@ async def parse_ressource(ressource, message=None, member=None, args=None):
         stat = getstat(member.id)
         await message.channel.send("Vous avez {} {}".format(stat[ressource] ,STAT_NAME[ressource]))
     if len(args) == 1:
-        await message.channel.send("comming soon (j'ai la flemme de coder)")
+        member = message.guild.get_member_named(args[0])
+        if not member:
+            await message.channel.send("Membre non trouvé")
+            return None
+        stat = getstat(member.id)
+        if not stat:
+            await message.channel.send("Le membre ne possède aucun personnage joueur")
+            return None
+        await message.channel.send(member.name + " a {} {}".format(stat[ressource], STAT_NAME[ressource]))
     if len(args) == 2:
         await add_ressource(ressource, message=message, member=member, args=args)
         
@@ -121,42 +129,48 @@ async def add_ressource(ressource, message=None, member=None, args=None):
                            str(int(stat[REMAIN]) + level - int(stat[LEVEL])))
     
 async def stats(message=None, member=None, args=None, force=False):
-    if not args : args = ["show"]
-    if args[0] == "show":
-        if len(args) >= 2:
-            member = message.guild.get_member_named(args[1])
-            if not member:
-                await message.channel.send("Membre non trouvé")
-                return False
-        stat = getstat(member.id)
-        em = discord.Embed(title="Fiche de personnage", colour=member.colour)
-        em.add_field(
-            name="Personnage",
-            value="Niveau **{}**\nExpérience : {}/{}\nCrédit : {}\nClasse : **{}**\n{}{}".format(
-                stat[LEVEL], stat[XP], get_level(stat[XP])[1], stat[GOLD],
-                stat[MAIN_CLASSE], ' '*15, stat[SECOND_CLASSE])
-            )
-        em.add_field(
-            name="Description",
-            value=stat[NOTE]
+    if args:
+        member = message.guild.get_member_named(" ".join(args))
+        if not member:
+            await message.channel.send("Membre non trouvé")
+            return None
+    if len(args) >= 2:
+        member = message.guild.get_member_named(args[1])
+        if not member:
+            await message.channel.send("Membre non trouvé")
+            return False
+    stat = getstat(member.id)
+    if not stat:
+        await message.channel.send("Le membre n'a pas de personnage joueur")
+        return None
+    em = discord.Embed(title="Fiche de personnage", colour=member.colour)
+    em.add_field(
+        name="Personnage",
+        value="Niveau **{}**\nExpérience : {}/{}\nCrédit : {}\nClasse : **{}**\n{}{}".format(
+            stat[LEVEL], stat[XP], get_level(stat[XP])[1], stat[GOLD],
+            stat[MAIN_CLASSE], ' '*15, stat[SECOND_CLASSE])
         )
-        em.add_field(
-            inline=False,
-            name="Statistiques",
-            value="""```diff\n{}```""".format(
-                "\n".join([
-                    ("+" if int(stat[x]) >= 60 else ("-" if int(stat[x]) < 25 else ">")) +
-                    STAT_NAME[x] + " :" + 
-                    stat[x] +
-                    " " * (3 - len(stat[x])) +
-                    "▬" * (int(stat[x]) // 5)
-                    for x in ALL_STATS
-                ])) +
-                ("Points restant : {}".format(stat[REMAIN]) if int(stat[REMAIN]) else "")
+    em.add_field(
+        name="Description",
+        value=stat[NOTE]
+    )
+    em.add_field(
+        inline=False,
+        name="Statistiques",
+        value="""```diff\n{}```""".format(
+            "\n".join([
+            ("+" if int(stat[x]) >= 60 else ("-" if int(stat[x]) < 25 else ">")) +
+            STAT_NAME[x] + " :" + 
+            stat[x] +
+            " " * (3 - len(stat[x])) +
+            "▬" * (int(stat[x]) // 5)
+            for x in ALL_STATS
+            ])) +
+            ("Points restant : {}".format(stat[REMAIN]) if int(stat[REMAIN]) else "")
         )
-        em.set_image(url=stat[IMAGE_URL])
-        em.set_author(name=member.name, url=member.avatar_url)
-        await message.channel.send(embed=em)
+    em.set_image(url=stat[IMAGE_URL])
+    em.set_author(name=member.name, url=member.avatar_url)
+    await message.channel.send(embed=em)
 
 
 def get_level(xp):
