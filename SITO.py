@@ -1,53 +1,39 @@
 #!/usr/bin/python3
-import sys
-import os
 import discord
-import asyncio
 import logging
 import gspread
 import traceback
 from oauth2client.service_account import ServiceAccountCredentials
 
-ID_DISCORD = 0
-CHAR_NAME = 1
-AGE = 2
-IMAGE_URL = 3
-LEVEL = 4
-XP = 5
-GOLD = 6
-MAIN_CLASSE = 7
-SECOND_CLASSE = 8
-FORCE = 9
-RESIS = 10
-TIR = 11
-AGILITE = 12
-MAGIE = 13
-CHARISME = 14
-INTEL = 15
-REMAIN = 16
-NOTE = 17
-ALL_STATS = [FORCE, RESIS, TIR, AGILITE, MAGIE, CHARISME, INTEL]
-STAT_NAME = {
-     5:"Expérience",
-     6:"Crédit",
-     9:"Force     ",
-    10:"Résistance",
-    11:"Tir       ",
-    12:"Agilité   ",
-    13:"Magie     ",
-    14:"Charisme  ",
-    15:"Intellig. "
-}
+from constant import *
+from pnj_manager import pnj_say
 
 logging.basicConfig(level=logging.INFO)
 client = discord.Client()
 
-gc = gspread.authorize(ServiceAccountCredentials.from_json_keyfile_name("private/google",["https://spreadsheets.google.com/feeds"]))
-wb = gc.open_by_key('1rqKgJRIqoOSa0LoWyp5Dh9PZZnUIYWqKAGB3XvOp5fk')
-wb = wb.get_worksheet(0)
+class DataBase:
+    def __init__(self):
+        gc = gspread.authorize(ServiceAccountCredentials.from_json_keyfile_name("private/google",["https://spreadsheets.google.com/feeds"]))
+        self.wb = gc.open_by_key('1rqKgJRIqoOSa0LoWyp5Dh9PZZnUIYWqKAGB3XvOp5fk')
+        self.pj_sh = self.wb.get_worksheet(0)
+        self.pnj_sh = self.wb.get_worksheet(1)
+        self.pj_ll = None
+        self.pnj_ll = None
+        self.refresh()
+    def get_pj_info(self) -> [list]:
+        return self.pj_ll
+    def get_pnj_info(self) -> [list]:
+        return self.pnj_ll
+    def refresh(self):
+        self.pj_ll = self.pj_sh.get_all_values()
+        self.pnj_ll = self.pnj_sh.get_all_values()
+
+db = DataBase()
 
 @client.event
-async def on_message(m):
+async def on_message(m: discord.Message):
+    if m.content.startswith(">>"):
+        await pnj_say(m, db.get_pnj_info())
     if m.content.startswith('/'):
         member = m.author
         cmd = m.content.split(" ")[0][1:].lower()
@@ -63,29 +49,41 @@ async def on_message(m):
         except Exception:
             em = discord.Embed(title="Oh no !  😱",
                                description="Une erreur s'est produite lors de l'éxécution de la commande\n```diff\n- [FATAL ERROR]\n" + traceback.format_exc() + "```",
-                               colour=0xFF0000).set_footer(
-                                   text="command : " + m.content,icon_url=m.author.avatar_url)
+                               colour=0xFF0000)
+            em.set_footer(text="command : " + m.content,icon_url=m.author.avatar_url)
             await m.channel.send(embed=em)
 
-async def command(message, member, cmd, args, force):
+async def command(message : discord.Message, member, cmd : str, args : list, force : bool):
     if cmd == "stats" : await stats(message=message, member=member, args=args)
     elif cmd == "exp" : await parse_ressource(XP, message=message, args=args, member=member)
     elif cmd == "credit": await parse_ressource(GOLD, message=message, args=args, member=member)
+    elif cmd == "dbrefresh": db.refresh()
 
-def getstat(id):
-    for line in wb.get_all_values():
+def getstat(id) -> list:
+    for line in db.get_pj_info():
         if line[ID_DISCORD] == str(id):
             return line
     return None
 
-def get_dbb_stats_line(id):
-    sh = wb.get_all_values()
-    for line in range(len(sh)):
-        if sh[line][ID_DISCORD] == str(id):
+def get_dbb_stats_line(id) -> int:
+    ll = db.get_pj_info()
+    for line in range(len(ll)):
+        if ll[line][ID_DISCORD] == str(id):
             return line
     return None
 
-async def parse_ressource(ressource, message=None, member=None, args=None):
+def get_level(xp) -> tuple:
+    xp = int(xp)
+    xpNeeded = 100
+    level = 0
+    while xp >= xpNeeded:
+        level += 1
+        xpNeeded += 100 + 10 * level
+    return (level, xpNeeded)
+
+# COMMANDS
+
+async def parse_ressource(ressource: int, message=None, member=None, args=None):
     if not args:
         stat = getstat(member.id)
         await message.channel.send("Vous avez {} {}".format(stat[ressource] ,STAT_NAME[ressource]))
@@ -102,7 +100,8 @@ async def parse_ressource(ressource, message=None, member=None, args=None):
     if len(args) == 2:
         await add_ressource(ressource, message=message, member=member, args=args)
         
-async def add_ressource(ressource, message=None, member=None, args=None):
+async def add_ressource(ressource : int, message=None, member=None, args=None):
+    sh = db.pj_sh
     nb = int(args[-1])
     member = message.guild.get_member_named(" ".join(args[:-1]))
     if not member:
@@ -118,15 +117,16 @@ async def add_ressource(ressource, message=None, member=None, args=None):
                                 new_nb
     )
     await message.channel.send(msg)
-    wb.update_cell(get_dbb_stats_line(member.id) + 1, ressource + 1, str(new_nb))
+    sh.update_cell(get_dbb_stats_line(member.id) + 1, ressource + 1, str(new_nb))
     if ressource == XP:
         level = get_level(new_nb)[0]
         if level > int(stat[LEVEL]):
             await message.channel.send(member.mention + " a level up au niveau " + str(level) +" !!")
         if level != int(stat[LEVEL]):
-            wb.update_cell(get_dbb_stats_line(member.id) + 1, LEVEL + 1, str(level))
-            wb.update_cell(get_dbb_stats_line(member.id) + 1, REMAIN + 1,
+            sh.update_cell(get_dbb_stats_line(member.id) + 1, LEVEL + 1, str(level))
+            sh.update_cell(get_dbb_stats_line(member.id) + 1, REMAIN + 1,
                            str(int(stat[REMAIN]) + level - int(stat[LEVEL])))
+    db.refresh()
     
 async def stats(message=None, member=None, args=None, force=False):
     if args:
@@ -172,14 +172,5 @@ async def stats(message=None, member=None, args=None, force=False):
     em.set_author(name=member.name, url=member.avatar_url)
     await message.channel.send(embed=em)
 
-
-def get_level(xp):
-    xp = int(xp)
-    xpNeeded = 100
-    level = 0
-    while xp >= xpNeeded:
-        level += 1
-        xpNeeded += 100 + 10 * level
-    return (level, xpNeeded)
         
 with open("private/token") as fd: client.run(fd.read())
