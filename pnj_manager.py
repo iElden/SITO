@@ -24,7 +24,10 @@ async def pnj_say(message: discord.Message, ll : [list]):
     webhook = await get_webhook(message.channel)
     pnj, content = message.content.split('\n', 1)
     pnj = pnj[2:]
-    line = await get_pnj(ll, pnj)
+    if pnj:
+        line = await get_pnj(ll, pnj)
+    else:
+        line = await get_pnj(ll, "univers")
     if not line:
         await message.channel.send("Le PNJ {} n'a pas été trouvé".format(pnj))
     await webhook.send(content,
