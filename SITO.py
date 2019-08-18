@@ -56,8 +56,10 @@ async def command(message : discord.Message, member, cmd : str, args : list, for
     if cmd == "stats" : await stats(message=message, member=member, args=args)
     elif cmd == "exp" : await parse_ressource(XP, message=message, args=args, member=member)
     elif cmd == "credit": await parse_ressource(GOLD, message=message, args=args, member=member)
-    elif cmd == "dbrefresh": db.refresh()
     elif cmd == "archive": await archive(message, message.channel)
+    elif cmd == "dbrefresh":
+        db.refresh()
+        await message.channel.send("done")
 
 def getstat(id) -> list:
     for line in db.get_pj_info():
