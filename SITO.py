@@ -7,6 +7,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 
 from constant import *
 from pnj_manager import pnj_say
+from archiver import archive
 
 logging.basicConfig(level=logging.INFO)
 client = discord.Client()
@@ -44,8 +45,6 @@ async def on_message(m: discord.Message):
         else: args = m.content.split(" ")[1:]
         try:
             await command(m, member, cmd, args, force)
-        except KeyError:
-            await m.channel.send("Commande non reconnu")
         except Exception:
             em = discord.Embed(title="Oh no !  😱",
                                description="Une erreur s'est produite lors de l'éxécution de la commande\n```diff\n- [FATAL ERROR]\n" + traceback.format_exc() + "```",
@@ -58,6 +57,7 @@ async def command(message : discord.Message, member, cmd : str, args : list, for
     elif cmd == "exp" : await parse_ressource(XP, message=message, args=args, member=member)
     elif cmd == "credit": await parse_ressource(GOLD, message=message, args=args, member=member)
     elif cmd == "dbrefresh": db.refresh()
+    elif cmd == "archive": await archive(message, message.channel)
 
 def getstat(id) -> list:
     for line in db.get_pj_info():
