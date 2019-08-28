@@ -1,35 +1,34 @@
 #!/usr/bin/python3
 import discord
 import logging
-import gspread
 import traceback
-from oauth2client.service_account import ServiceAccountCredentials
+from typing import Optional
 
-from constant import *
+from exc import SITOException
 from pnj_manager import pnj_say
 from archiver import archive
+from DynamicEmbed import on_reaction_change
+from gdoc_manager import DataBase, PJ
 
 logging.basicConfig(level=logging.INFO)
 client = discord.Client()
 
-class DataBase:
-    def __init__(self):
-        gc = gspread.authorize(ServiceAccountCredentials.from_json_keyfile_name("private/google",["https://spreadsheets.google.com/feeds"]))
-        self.wb = gc.open_by_key('1rqKgJRIqoOSa0LoWyp5Dh9PZZnUIYWqKAGB3XvOp5fk')
-        self.pj_sh = self.wb.get_worksheet(0)
-        self.pnj_sh = self.wb.get_worksheet(1)
-        self.pj_ll = None
-        self.pnj_ll = None
-        self.refresh()
-    def get_pj_info(self) -> [list]:
-        return self.pj_ll
-    def get_pnj_info(self) -> [list]:
-        return self.pnj_ll
-    def refresh(self):
-        self.pj_ll = self.pj_sh.get_all_values()
-        self.pnj_ll = self.pnj_sh.get_all_values()
-
 db = DataBase()
+
+@client.event
+async def on_ready():
+    print("Connected")
+
+@client.event
+async def on_raw_reaction_add(payload : discord.RawReactionActionEvent):
+    if payload.user_id == client.user.id: return
+    await on_reaction_change(payload)
+
+@client.event
+async def on_raw_reaction_remove(payload: discord.RawReactionActionEvent):
+    if payload.user_id == client.user.id: return
+    await on_reaction_change(payload)
+
 
 @client.event
 async def on_message(m: discord.Message):
@@ -45,6 +44,9 @@ async def on_message(m: discord.Message):
         else: args = m.content.split(" ")[1:]
         try:
             await command(m, member, cmd, args, force)
+        except SITOException:
+            error = traceback.format_exc().split('\n')[-1] or traceback.format_exc().split('\n')[-2]
+            await m.channel.send(error[4:])
         except Exception:
             em = discord.Embed(title="Oh no !  😱",
                                description="Une erreur s'est produite lors de l'éxécution de la commande\n```diff\n- [FATAL ERROR]\n" + traceback.format_exc() + "```",
@@ -61,16 +63,16 @@ async def command(message : discord.Message, member, cmd : str, args : list, for
         db.refresh()
         await message.channel.send("done")
 
-def getstat(id) -> list:
+def getstat(id) -> Optional[list]:
     for line in db.get_pj_info():
-        if line[ID_DISCORD] == str(id):
+        if line[0] == str(id):
             return line
     return None
 
-def get_dbb_stats_line(id) -> int:
+def get_dbb_stats_line(id) -> Optional[int]:
     ll = db.get_pj_info()
     for line in range(len(ll)):
-        if ll[line][ID_DISCORD] == str(id):
+        if ll[line][0] == str(id):
             return line
     return None
 
@@ -131,6 +133,7 @@ async def add_ressource(ressource : int, message=None, member=None, args=None):
     db.refresh()
     
 async def stats(message=None, member=None, args=None, force=False):
+    await message.channel.trigger_typing()
     if args:
         member = message.guild.get_member_named(" ".join(args))
         if not member:
@@ -145,34 +148,8 @@ async def stats(message=None, member=None, args=None, force=False):
     if not stat:
         await message.channel.send("Le membre n'a pas de personnage joueur")
         return None
-    em = discord.Embed(title="Fiche de personnage", colour=member.colour)
-    em.add_field(
-        name="Personnage",
-        value="Niveau **{}**\nExpérience : {}/{}\nCrédit : {}\nClasse : **{}**\n{}{}".format(
-            stat[LEVEL], stat[XP], get_level(stat[XP])[1], stat[GOLD],
-            stat[MAIN_CLASSE], ' '*15, stat[SECOND_CLASSE])
-        )
-    em.add_field(
-        name="Description",
-        value=stat[NOTE]
-    )
-    em.add_field(
-        inline=False,
-        name="Statistiques",
-        value="""```diff\n{}```""".format(
-            "\n".join([
-            ("+" if int(stat[x]) >= 60 else ("-" if int(stat[x]) < 25 else ">")) +
-            STAT_NAME[x] + " :" + 
-            stat[x] +
-            " " * (3 - len(stat[x])) +
-            "▬" * (int(stat[x]) // 5)
-            for x in ALL_STATS
-            ])) +
-            ("Points restant : {}".format(stat[REMAIN]) if int(stat[REMAIN]) else "")
-        )
-    em.set_image(url=stat[IMAGE_URL])
-    em.set_author(name=member.name, url=member.avatar_url)
-    await message.channel.send(embed=em)
+    pj = PJ(stat, guild=message.guild)
+    await pj.create_interactive_sheet(message.channel)
 
         
 with open("private/token") as fd: client.run(fd.read())
