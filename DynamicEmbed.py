@@ -13,7 +13,6 @@ class DynamicEmbed:
             fields (List[List[Tuple[str, str]]]):
             base_embed (discord.Embed):
         """
-        print(fields)
         self.fields = fields
         if not base_embed:
             self.base_embed: discord.Embed()
@@ -27,7 +26,7 @@ class DynamicEmbed:
         self.page = page_number
         for field in self.fields[page_number - 1]:
             em.add_field(name=field[0], value=field[1], inline=False)
-        em.set_footer(text=f"{self.page}/{self.max_page} | {self.message.id}")
+        em.set_footer(text=f"Page {self.page}/{self.max_page}")
         return await self.message.edit(embed=em)
 
     async def next_page(self):
@@ -66,7 +65,6 @@ class DynamicEmbed:
 
 async def on_reaction_change(payload : discord.RawReactionActionEvent):
     if payload.message_id in DynamicEmbed.dynamic_embeds:
-        print(f"got emoji {payload.emoji}")
         de = DynamicEmbed.dynamic_embeds[payload.message_id]
         emoji = str(payload.emoji)
         if emoji == EMOJI_FIRST_PAGE:
