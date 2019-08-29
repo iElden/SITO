@@ -8,9 +8,16 @@ import re
 
 MAIN_GDOC_KEY = "1rqKgJRIqoOSa0LoWyp5Dh9PZZnUIYWqKAGB3XvOp5fk"
 
+def verify_gs_token(function):
+    def wrapper(*args, **kwargs):
+        print("verifing token ...")
+        DataBase.gc.login()
+        function(*args, **kwargs)
+    return wrapper
+
 class DataBase:
-    gc = gspread.authorize(
-        ServiceAccountCredentials.from_json_keyfile_name("private/google", ["https://spreadsheets.google.com/feeds"]))
+    creds = ServiceAccountCredentials.from_json_keyfile_name("private/google", ["https://spreadsheets.google.com/feeds"])
+    gc = gspread.authorize(creds)
 
     def __init__(self):
         self.wb = self.gc.open_by_key(MAIN_GDOC_KEY)
@@ -31,23 +38,22 @@ class Skill:
     def __init__(self, name, base, exp, total):
         """
         Args:
-            base (gspread.Cell): base xp for this skill
-            exp (gspread.Cell): xp given by player in this skill
-            total (gspread.Cell): total xp
+            base (str): base xp for this skill
+            exp (str): xp given by player in this skill
+            total (str): total xp
         """
-        print(name, base, exp, total)
-        if not base.value.isnumeric():
-            raise InvalidSheet(f"L'xp de base pour les compétence doit être un nombre, et non pas \"{base.value}\"")
-        if not exp.value:
-            exp.value = 0
-        elif not exp.value.isnumeric():
-            raise InvalidSheet(f"L'xp investi pour les compétence doit être un nombre ou vide, et non pas \"{exp.value}\"")
-        if not total.value.isnumeric():
-            raise InvalidSheet(f"L'xp total pour les compétence doit être un nombre, et non pas \"{total.value}\"")
-        self.name = name.value
-        self.base_value = int(base.value)
-        self.exp_value = int(exp.value)
-        self.total_value = int(total.value)
+        if not base.isnumeric():
+            raise InvalidSheet(f"L'xp de base pour les compétence doit être un nombre, et non pas \"{base}\"")
+        if not exp:
+            exp = 0
+        elif not exp.isnumeric():
+            raise InvalidSheet(f"L'xp investi pour les compétence doit être un nombre ou vide, et non pas \"{exp}\"")
+        if not total.isnumeric():
+            raise InvalidSheet(f"L'xp total pour les compétence doit être un nombre, et non pas \"{total}\"")
+        self.name = name
+        self.base_value = int(base)
+        self.exp_value = int(exp)
+        self.total_value = int(total)
 
 class Atribute:
     def __init__(self, name, value):
@@ -98,6 +104,7 @@ class PJ:
         if not self.member:
             raise NotFound(f"member with id {self.discord_id} was not found in the server")
 
+    @verify_gs_token
     def get_full_char_sheet_info(self):
         try:
             shs = DataBase.gc.open_by_url(self.gdoc_url)
@@ -140,13 +147,13 @@ class PJ:
         except:
             raise InvalidSheet(f"Stats must be a int")
 
-        self.inventory = sh.range("B15:B100")
-        atributes = sh.range("E15:F100")
-        self.attributes = [(atributes[i*2].value, atributes[i*2 + 1].value) for i in range(len(atributes) // 2) if atributes[i * 2]]
-        states = sh.range("O15:P100")
-        self.states = [(states[i * 2].value, states[i * 2 + 1].value) for i in range(len(states) // 2) if states[i * 2]]
-        skills =  sh.range("J15:M100")
-        self.skills = [Skill(*skills[i*4:i*4+4]) for i in range(len(skills) // 4) if skills[i * 4].value]
+        self.inventory = [i.value for i in sh.range("B15:B100") if i.value]
+        atributes = [i.value for i in sh.range("E15:F100")]
+        self.attributes = [Atribute(atributes[i*2], atributes[i*2 + 1]) for i in range(len(atributes) // 2) if atributes[i * 2]]
+        states = [i.value for i in sh.range("O15:P100")]
+        self.states = [Atribute(states[i * 2], states[i * 2 + 1]) for i in range(len(states) // 2) if states[i * 2]]
+        skills =  [i.value for i in sh.range("J15:M100")]
+        self.skills = [Skill(*skills[i*4:i*4+4]) for i in range(len(skills) // 4) if skills[i * 4]]
 
         self.advenced_info_fetched = True
 
@@ -175,7 +182,10 @@ class PJ:
             f"{self.job} de {self.age} ans\n"
             f"Niveau **{self.level}** ({self.xp} XP)\n"
             f"{self.gold} crédit(s)"))
-
+        fields.append((
+            "Description / Histoire",
+            self.desc[:1024]
+        ))
         fields.append((
             "Statistiques",
             """```diff\n{}```""".format(
@@ -192,10 +202,6 @@ class PJ:
         return fields
 
     def comp_sheet(self):
-        em = discord.Embed(title="Fiche de personnage", url=self.gdoc_url, colour=self.member.colour,
-                           description=f"{self.desc[:2048]}")
-        em.set_author(name=self.get_full_name(), icon_url=self.member.avatar_url)
-
         pages = [] # type: List[List[Tuple[str, str]]]
 
         txt = "```diff\n"
@@ -214,11 +220,53 @@ class PJ:
         pages.append([("Compétences", txt + "```")])
         return pages
 
+    def attribute_sheets(self):
+        pages = []  # type: List[List[Tuple[str, str]]]
+
+        txt = ""
+        for attribute in self.attributes:
+            new_txt = f"**__{attribute.name}__**:\n{attribute.value}\n\n"
+            if len(txt) + len(new_txt) >= 1024:
+                pages.append([('Attributs', txt)])
+                txt = ""
+            else:
+                txt += new_txt
+        pages.append([('Attributs', txt)])
+        return pages
+
+    def state_sheets(self):
+        pages = []  # type: List[List[Tuple[str, str]]]
+
+        txt = ""
+        for state in self.states:
+            new_txt = f"**__{state.name}__**:\n{state.value}\n\n"
+            if len(txt) + len(new_txt) >= 1024:
+                pages.append([('Etat / Blessure / Sequelle', txt)])
+                txt = ""
+            else:
+                txt += new_txt
+        pages.append([('Etat / Blessure / Sequelle', txt)])
+        return pages
+
+    def inventory_sheet(self):
+        pages = []  # type: List[List[Tuple[str, str]]]
+
+        txt = ""
+        for state in self.inventory:
+            new_txt = f"- {state}\n"
+            if len(txt) + len(new_txt) >= 1024:
+                pages.append([('Inventaire', txt)])
+                txt = ""
+            else:
+                txt += new_txt
+        pages.append([('Inventaire', txt)])
+        return pages
+
 
     async def create_interactive_sheet(self, channel):
-        em = discord.Embed(title="Fiche de personnage", url=self.gdoc_url, colour=self.member.colour,
-                           description=f"{self.desc[2048:]}")
+        em = discord.Embed(title="Fiche de personnage", url=self.gdoc_url, colour=self.member.colour)
         em.set_author(name=self.get_full_name(), icon_url=self.member.avatar_url)
         em.set_image(url=self.image_url)
-        de = DynamicEmbed([self.main_sheet()] + self.comp_sheet(), base_embed=em)
+        de = DynamicEmbed([self.main_sheet()] + self.comp_sheet() + self.attribute_sheets() + self.state_sheets() + self.inventory_sheet(),
+                          base_embed=em)
         return await de.send_embed(channel)
