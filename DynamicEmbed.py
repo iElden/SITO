@@ -15,8 +15,9 @@ class DynamicEmbed:
         """
         self.fields = fields
         if not base_embed:
-            self.base_embed: discord.Embed()
-        self.base_embed = base_embed
+            self.base_embed = discord.Embed()
+        else:
+            self.base_embed = base_embed
         self.message = None # type: Optional[discord.Message]
         self.page = 1
         self.max_page = len(fields)
