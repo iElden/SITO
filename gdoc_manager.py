@@ -1,9 +1,10 @@
 import gspread
 import discord
 from oauth2client.service_account import ServiceAccountCredentials
-from typing import List, Tuple
-from exc import NotFound, InvalidSheet
+from typing import List, Tuple, Union
+from exc import NotFound, InvalidSheet, ALEDException
 from DynamicEmbed import DynamicEmbed
+from utils import get_member
 import re
 
 MAIN_GDOC_KEY = "1rqKgJRIqoOSa0LoWyp5Dh9PZZnUIYWqKAGB3XvOp5fk"
@@ -19,17 +20,49 @@ class DataBase:
     creds = ServiceAccountCredentials.from_json_keyfile_name("private/google", ["https://spreadsheets.google.com/feeds"])
     gc = gspread.authorize(creds)
 
-    def __init__(self):
+    def __init__(self, guild=None):
         self.wb = self.gc.open_by_key(MAIN_GDOC_KEY)
         self.pj_sh = self.wb.get_worksheet(0)
         self.pnj_sh = self.wb.get_worksheet(1)
-        self.pj_ll = None
-        self.pnj_ll = None
+        self.pj_ll = None   # type: List[List[str]]
+        self.pnj_ll = None  # type: List[List[str]]
         self.refresh()
-    def get_pj_info(self) -> [list]:
+        self.guild = guild
+    def get_all_pj_info(self) -> [list]:
         return self.pj_ll
-    def get_pnj_info(self) -> [list]:
+    def get_all_pnj_info(self) -> [list]:
         return self.pnj_ll
+
+    def get_pj(self, name):
+        """
+        Args:
+            name (Union[str, discord.Member]): can be a str or a discord.Member
+        Returns:
+            Optional[PJ]: a PJ object
+        """
+        if isinstance(name, str):
+            member = get_member(self.guild, name)
+            if member:
+                return self.get_pj_by_member(member)
+            return self.get_pj_by_name(name)
+
+        elif isinstance(name, discord.Member) or isinstance(name, discord.User):
+            return self.get_pj_by_member(name)
+        else:
+            raise ALEDException("Database.get_pj argument must be a str or a discord member object !")
+
+    def get_pj_by_name(self, name : str):
+        for line in self.pj_ll:
+            if line[1].lower() == name.lower():
+                return PJ(line, guild=self.guild)
+        return None
+
+    def get_pj_by_member(self, member : discord.User):
+        for line in self.pj_ll:
+            if line[0] == str(member.id):
+                return PJ(line, guild=self.guild)
+        return None
+
     def refresh(self):
         self.pj_ll = self.pj_sh.get_all_values()
         self.pnj_ll = self.pnj_sh.get_all_values()
@@ -50,10 +83,12 @@ class Skill:
             raise InvalidSheet(f"L'xp investi pour les compétence doit être un nombre ou vide, et non pas \"{exp}\"")
         if not total.isnumeric():
             raise InvalidSheet(f"L'xp total pour les compétence doit être un nombre, et non pas \"{total}\"")
-        self.name = name
-        self.base_value = int(base)
-        self.exp_value = int(exp)
-        self.total_value = int(total)
+        self.name = name                # type: str
+        self.base_value = int(base)     # type: int
+        self.exp_value = int(exp)       # type: int
+        self.total_value = int(total)   # type: int
+    def __repr__(self):
+        return f"Skill({self.name, self.base_value, self.exp_value, self.total_value})"
 
 class Atribute:
     def __init__(self, name, value):
@@ -146,6 +181,9 @@ class PJ:
             self.magic = int(sh.acell('M10').value)
         except:
             raise InvalidSheet(f"Stats must be a int")
+        self.main_skill = {'Force': self.force, 'Corpulence': self.resis, 'Dextérité': self.dexteriry,
+                           'Agilité': self.agility, 'Social': self.social, 'Savoir': self.knowledge, 'Magie': self.magic}
+        self.main_skill = [Skill(k, '0', '0', str(v)) for k, v in self.main_skill.items()]
 
         self.inventory = [i.value for i in sh.range("B15:B100") if i.value]
         atributes = [i.value for i in sh.range("E15:F100")]
@@ -169,6 +207,13 @@ class PJ:
 
     def __str__(self):
         return self.name
+
+    def get_stats_by_name(self, name):
+        if not self.advenced_info_fetched:
+            self.get_full_char_sheet_info()
+        result = self.main_skill + self.skills  # type: List[Skill]
+        print(result)
+        return [i for i in result if i.name.lower().startswith(name.lower())]
 
     def main_sheet(self):
         """

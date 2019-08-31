@@ -9,15 +9,19 @@ from pnj_manager import pnj_say
 from archiver import archive
 from DynamicEmbed import on_reaction_change
 from gdoc_manager import DataBase, PJ
+from roll import cmd_test
 
 logging.basicConfig(level=logging.INFO)
 client = discord.Client()
 
-db = DataBase()
+GUILD_ID = 457673969017815063
+db = None # wait for discord socket to be initialised
 
 @client.event
 async def on_ready():
     print("Connected")
+    global db
+    db = DataBase(guild=client.get_guild(GUILD_ID))
 
 @client.event
 async def on_raw_reaction_add(payload : discord.RawReactionActionEvent):
@@ -33,7 +37,7 @@ async def on_raw_reaction_remove(payload: discord.RawReactionActionEvent):
 @client.event
 async def on_message(m: discord.Message):
     if m.content.startswith(">>"):
-        await pnj_say(m, db.get_pnj_info())
+        await pnj_say(m, db.get_all_pnj_info())
     if m.content.startswith('/'):
         member = m.author
         cmd = m.content.split(" ")[0][1:].lower()
@@ -59,18 +63,19 @@ async def command(message : discord.Message, member, cmd : str, args : list, for
     elif cmd == "exp" : await parse_ressource(XP, message=message, args=args, member=member)
     elif cmd == "credit": await parse_ressource(GOLD, message=message, args=args, member=member)
     elif cmd == "archive": await archive(message, message.channel)
+    elif cmd == "test":await cmd_test(message, member, args, database=db)
     elif cmd == "dbrefresh":
         db.refresh()
         await message.channel.send("done")
 
 def getstat(id) -> Optional[list]:
-    for line in db.get_pj_info():
+    for line in db.get_all_pj_info():
         if line[0] == str(id):
             return line
     return None
 
 def get_dbb_stats_line(id) -> Optional[int]:
-    ll = db.get_pj_info()
+    ll = db.get_all_pj_info()
     for line in range(len(ll)):
         if ll[line][0] == str(id):
             return line
