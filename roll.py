@@ -6,7 +6,7 @@ from exc import InvalidArgs, NotFound
 from gdoc_manager import PJ
 
 def parse_expr(expr : str, *, pj : PJ):
-    goal = 0 # type: int
+    goal = 0  # type: int
     stats_recap = []  # type: List[Tuple[str, int]]
     bonus_recap = 0
 
@@ -49,11 +49,17 @@ async def cmd_test(message, member, args, *, database):
         message (discord.Message):
         member (discord.User):
         args (List[str]):
+        database (Database):
     """
-    pj = database.get_pj(member)
+    expr = ''.join(args)
+    if '#' in expr:
+        expr, pj_name = expr.split('#', 1)
+        pj = database.get_pj(pj_name)
+    else:
+        pj = database.get_pj(member)
     if not pj:
         raise NotFound("Impossible de récupérer le PJ pour obtenir les stats.")
-    expr = ''.join(args)
+
     goal, stats, bonus = parse_expr(expr, pj=pj)
     dice = random.randint(1, 100)
     em = discord.Embed(title="Test de compétence", color=member.color)
